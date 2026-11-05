@@ -1,0 +1,138 @@
+(() => {
+  const cfg = window.TWINZ_CONFIG || {};
+  const configured = cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY &&
+    !cfg.SUPABASE_URL.includes("IDE_JON") && !cfg.SUPABASE_ANON_KEY.includes("IDE_JON");
+  const $ = id => document.getElementById(id);
+  const msg = (text, error=false) => { $("global-message").textContent = text; $("global-message").style.color = error ? "#ff9999" : "#ddd"; };
+  if (!configured || !window.supabase) {
+    $("connection-status").textContent = "BEÁLLÍTÁS SZÜKSÉGES";
+    msg("Először állítsd be a config.js fájlban a Supabase URL-t és anon kulcsot. A README részletesen segít.", true);
+    $("auth-submit").disabled = true;
+    return;
+  }
+  const db = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  let mode = "login", scanner = null, currentUser = null, pendingRewardToken = null;
+
+  function show(id) {
+    ["auth-panel","customer-panel","admin-panel"].forEach(x => $(x).classList.toggle("hidden", x !== id));
+  }
+  function setMode(next) {
+    mode = next;
+    $("show-login").classList.toggle("active", mode === "login");
+    $("show-register").classList.toggle("active", mode === "register");
+    $("name-label").classList.toggle("hidden", mode !== "register");
+    $("auth-submit").textContent = mode === "login" ? "Belépés" : "Fiók létrehozása";
+    $("auth-hint").textContent = mode === "login" ? "Új vendég vagy? Regisztrálj, és készítsd el a digitális kártyádat." : "A regisztráció után e-mailes megerősítésre lehet szükség.";
+  }
+  $("show-login").onclick = () => setMode("login");
+  $("show-register").onclick = () => setMode("register");
+
+  $("auth-form").addEventListener("submit", async e => {
+    e.preventDefault(); msg("Feldolgozás…");
+    const email = $("email").value.trim(), password = $("password").value;
+    let result;
+    if (mode === "register") {
+      const full_name = $("full-name").value.trim();
+      if (!full_name) return msg("Add meg a neved.", true);
+      result = await db.auth.signUp({email,password,options:{data:{full_name}}});
+      if (!result.error && !result.data.session) msg("Sikeres regisztráció. Ha be van kapcsolva, erősítsd meg az e-mail címed, majd lépj be.");
+    } else result = await db.auth.signInWithPassword({email,password});
+    if (result.error) return msg(result.error.message, true);
+    if (result.data.session) await loadSession();
+  });
+
+  async function loadSession() {
+    const {data:{user}} = await db.auth.getUser();
+    currentUser = user;
+    if (!user) { show("auth-panel"); return; }
+    const {data:profile,error} = await db.from("profiles").select("full_name,is_admin").eq("id",user.id).single();
+    if (error) return msg("Nem sikerült betölteni a profilt: " + error.message, true);
+    $("connection-status").textContent = "CSATLAKOZVA";
+    if (profile.is_admin) { show("admin-panel"); await loadCustomers(); }
+    else { show("customer-panel"); await loadCard(profile); }
+  }
+
+  async function loadCard(profile) {
+    const {data:card,error} = await db.from("loyalty_cards").select("id,qr_token,stamps,reward_available").eq("user_id",currentUser.id).single();
+    if (error) return msg("A hűségkártya betöltése nem sikerült: " + error.message, true);
+    $("customer-name").textContent = profile.full_name || "TWINZ vendég";
+    $("stamps").innerHTML = "";
+    for (let i=1;i<=8;i++) {
+      const el = document.createElement("div");
+      el.className = "stamp" + (i <= card.stamps ? " done" : "") + (i===8 && card.reward_available ? " reward" : "");
+      el.textContent = i <= card.stamps ? "✓" : String(i);
+      $("stamps").appendChild(el);
+    }
+    $("visit-count").textContent = `${card.stamps} / 8 LÁTOGATÁS`;
+    $("remaining").textContent = card.reward_available ? "JUTALOM ELÉRHETŐ" : `${8-card.stamps} HÁTRAVAN`;
+    $("progress-fill").style.width = `${card.stamps/8*100}%`;
+    $("reward-message").classList.toggle("hidden", !card.reward_available);
+    $("customer-qr").innerHTML = "";
+    new QRCode($("customer-qr"), {text:card.qr_token,width:168,height:168,colorDark:"#000",colorLight:"#fff",correctLevel:QRCode.CorrectLevel.M});
+  }
+
+  async function loadCustomers() {
+    const {data,error} = await db.rpc("get_admin_customer_overview");
+    if (error) { $("customer-list").textContent = "Hiba: " + error.message; return; }
+    $("customer-list").innerHTML = "";
+    if (!data.length) { $("customer-list").textContent = "Még nincs regisztrált vendég."; return; }
+    data.forEach(c => {
+      const row = document.createElement("div"); row.className="customer-item";
+      const left = document.createElement("div"); left.textContent = c.full_name || "Névtelen vendég";
+      const small = document.createElement("small"); small.textContent = c.email || "";
+      left.appendChild(small);
+      const right = document.createElement("b"); right.textContent = c.reward_available ? "JUTALOM" : `${c.stamps}/8`;
+      row.append(left,right); $("customer-list").appendChild(row);
+    });
+  }
+
+  $("start-scan").onclick = async () => {
+    if (!window.Html5Qrcode) return msg("A QR-olvasó könyvtár nem töltődött be.", true);
+    $("scan-result").classList.add("hidden");
+    scanner = new Html5Qrcode("reader");
+    $("start-scan").classList.add("hidden"); $("stop-scan").classList.remove("hidden");
+    try {
+      await scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:230,height:230}}, async decoded => {
+        await scanner.stop(); scanner = null;
+        $("start-scan").classList.remove("hidden"); $("stop-scan").classList.add("hidden");
+        const {data,error} = await db.rpc("add_loyalty_visit",{p_qr_token:decoded.trim()});
+        const box = $("scan-result"); box.classList.remove("hidden");
+        if (error) {
+          box.textContent = "Nem sikerült új pecsétet rögzíteni: " + error.message;
+          // Ha a vendég már korábban megszerezte a jutalmat, a barber felajánlhatja a beváltást.
+          const {data: card} = await db.from("loyalty_cards").select("reward_available").eq("qr_token", decoded.trim()).maybeSingle();
+          if (card && card.reward_available) {
+            pendingRewardToken = decoded.trim();
+            $("redeem-reward").classList.remove("hidden");
+            box.textContent = "A vendégnek már van beváltható ingyenes hajvágása. Beváltás előtt ellenőrizd, hogy most ezt a jutalmat használja fel.";
+          }
+          return;
+        }
+        box.textContent = data.message + (data.reward_available ? " A vendég most megszerezte az ingyenes hajvágást!" : ` Jelenlegi állás: ${data.stamps}/8.`);
+        pendingRewardToken = null;
+        $("redeem-reward").classList.add("hidden");
+        await loadCustomers();
+      });
+    } catch(e) { msg("Nem sikerült elindítani a kamerát. Engedélyezd a kamera-hozzáférést, és HTTPS oldalon próbáld.", true); $("start-scan").classList.remove("hidden"); $("stop-scan").classList.add("hidden"); }
+  };
+  $("stop-scan").onclick = async () => { if(scanner){await scanner.stop();scanner=null;} $("start-scan").classList.remove("hidden");$("stop-scan").classList.add("hidden"); };
+  $("redeem-reward").onclick = async () => {
+    if (!pendingRewardToken) return;
+    if (!confirm("Biztosan beváltod az ingyenes hajvágást? A számláló nullázódik.")) return;
+    const {data,error} = await db.rpc("redeem_loyalty_reward",{p_qr_token:pendingRewardToken});
+    const box = $("scan-result");
+    if (error) { box.textContent = "A beváltás nem sikerült: " + error.message; return; }
+    box.textContent = data.message;
+    pendingRewardToken = null;
+    $("redeem-reward").classList.add("hidden");
+    await loadCustomers();
+  };
+  $("refresh-customers").onclick = loadCustomers;
+  $("logout-btn").onclick = $("admin-logout").onclick = async () => { await db.auth.signOut(); currentUser=null; show("auth-panel"); msg("Sikeresen kijelentkeztél."); };
+  let installPrompt = null;
+  window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installPrompt=e; $("install-btn").disabled=false; });
+  $("install-btn").onclick = async () => { if(installPrompt){installPrompt.prompt();installPrompt=null;} else msg("iPhone-on: Safari → Megosztás → Hozzáadás a főképernyőhöz."); };
+  if ("serviceWorker" in navigator) window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+  db.auth.onAuthStateChange((_event,session)=>{ if(session) setTimeout(loadSession,0); });
+  loadSession();
+})();

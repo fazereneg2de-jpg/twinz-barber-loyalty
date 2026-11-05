@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080808">
+  <meta name="description" content="TWINZ BARBER digitális hűségprogram">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <title>TWINZ BARBER | Loyalty Club</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">T</span><div><b>TWINZ</b><small>BARBER • LOYALTY CLUB</small></div></div>
+    <span class="status" id="connection-status">ONLINE</span>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <p class="eyebrow">PREMIUM MEMBERSHIP</p>
+      <h1>YOUR NEXT CUT.<br><span>YOUR NEXT REWARD.</span></h1>
+      <p class="muted">Gyűjts 8 fizetős hajvágást, és kapsz egy ingyenes hajvágást.</p>
+    </section>
+
+    <section id="auth-panel" class="panel">
+      <div class="tabs">
+        <button class="tab active" id="show-login">Belépés</button>
+        <button class="tab" id="show-register">Regisztráció</button>
+      </div>
+      <form id="auth-form">
+        <label id="name-label" class="hidden">Név<input id="full-name" autocomplete="name" placeholder="Teljes név"></label>
+        <label>E-mail cím<input id="email" type="email" required autocomplete="email" placeholder="nev@email.com"></label>
+        <label>Jelszó<input id="password" type="password" required minlength="6" autocomplete="current-password" placeholder="Legalább 6 karakter"></label>
+        <button class="btn primary" id="auth-submit" type="submit">Belépés</button>
+      </form>
+      <p class="hint" id="auth-hint">Új vendég vagy? Regisztrálj, és készítsd el a digitális kártyádat.</p>
+    </section>
+
+    <section id="customer-panel" class="hidden">
+      <div class="panel loyalty-card">
+        <div class="card-head"><div><b class="wordmark">TWINZ</b><small>BARBER</small></div><span class="chip">LOYALTY CLUB</span></div>
+        <div class="card-rule"></div>
+        <p class="eyebrow">HŰSÉGKÁRTYA</p>
+        <h2 id="customer-name">Vendég</h2>
+        <p class="muted">Minden 8 fizetős hajvágás után 1 ingyenes.</p>
+        <div class="stamps" id="stamps"></div>
+        <div class="progress-row"><span id="visit-count">0 / 8 LÁTOGATÁS</span><span id="remaining">8 HÁTRAVAN</span></div>
+        <div class="progress"><span id="progress-fill"></span></div>
+        <div id="reward-message" class="reward hidden">🎁 INGYENES HAJVÁGÁSOD VAN!</div>
+        <div class="qr-wrap"><div id="customer-qr"></div><small>Mutasd fel a QR-kódot a barbernek</small></div>
+      </div>
+      <div class="panel actions">
+        <button class="btn secondary" id="install-btn" disabled>Hozzáadás a főképernyőhöz</button>
+        <button class="btn ghost" id="logout-btn">Kijelentkezés</button>
+      </div>
+    </section>
+
+    <section id="admin-panel" class="hidden">
+      <div class="panel">
+        <div class="section-head"><div><p class="eyebrow">TWINZ BARBER</p><h2>Admin felület</h2></div><span class="chip">ADMIN</span></div>
+        <p class="muted">Olvasd be a vendég kártyáján lévő QR-kódot a látogatás rögzítéséhez.</p>
+        <div id="reader"></div>
+        <button class="btn primary" id="start-scan">QR-kód beolvasása</button>
+        <button class="btn ghost hidden" id="stop-scan">Kamera leállítása</button>
+        <div id="scan-result" class="notice hidden"></div>
+        <button class="btn secondary hidden" id="redeem-reward">Ingyenes hajvágás beváltása</button>
+      </div>
+      <div class="panel">
+        <div class="section-head"><h2>Vendégek</h2><button class="btn small secondary" id="refresh-customers">Frissítés</button></div>
+        <div id="customer-list" class="customer-list"><p class="muted">Töltsd be a vendéglistát.</p></div>
+      </div>
+      <div class="panel"><button class="btn ghost" id="admin-logout">Kijelentkezés</button></div>
+    </section>
+
+    <p id="global-message" class="global-message" role="status"></p>
+    <footer>© TWINZ BARBER • LOYALTY CLUB <span>BLACK / SILVER EDITION</span></footer>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="./config.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
